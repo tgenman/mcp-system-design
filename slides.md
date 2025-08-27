@@ -247,7 +247,9 @@ GET /api/tasks?user_id=123&status=active&page=2
 
 <!-- header: 5. Знакомство с MCP -->
 
-# 5. Знакомство с MCP
+# 5. Знакомство с Model Context Protocol (MCP)
+
+
 
 ---
 
@@ -263,13 +265,9 @@ MCP (Model Context Protocol) — это открытый стандарт для
 
 ## Архитектура: Client-Host-Server
 
-// TODO добавить картинку
+![width:750](attachments/mcp_architecture.png)
 
-- Client: AI-модель или приложение (Claude, ChatGPT, и др.)
-- Host: посредник, управляющий соединениями и маршрутизацией
-- Server: поставщик инструментов и данных (файловая система, API, БД)
-
-Двунаправленная связь: и клиент, и сервер могут инициировать сообщения
+<!-- _footer: https://modelcontextprotocol.io/specification/2025-06-18/architecture -->
 
 ---
 
