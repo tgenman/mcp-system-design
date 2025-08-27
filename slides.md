@@ -1,5 +1,5 @@
 ---
-marp: false
+marp: true
 theme: default
 paginate: true
 title: "От REST к MCP: как LLM меняют принципы проектирования API и архитектуры систем"
@@ -525,52 +525,46 @@ Content-Type: application/json
 <!-- header: 7. Фундаментальные изменения в архитектуре -->
 
 # 7. Фундаментальные изменения в архитектуре
+Практическая реализация — в разделе 8
 
 ---
 
-## От детерминированности к адаптивности
+## Принцип 1: От детерминированности к адаптивности
 
-### Классическая архитектура: детерминированные графы вызовов
+Классическая архитектура: статические графы выполнения
 
-<div style="font-size: 24px;">
+![width:800](attachments/statical_DAG.svg)
 
-```mermaid
-graph LR
-    Frontend --> BFF[Backend for Frontend]
-    BFF --> ServiceA[Service A]
-    BFF --> ServiceB[Service B]
-    ServiceA --> Database[(Database)]
-    ServiceB --> Queue[(Queue)]
-    Queue --> ServiceC[Service C]
-```
 
-- **Статический DAG**: последовательность вызовов известна на этапе компиляции
-- **Предсказуемые пути выполнения**: if/else логика в коде
-- **Ошибки = баги**: неправильный вызов означает ошибку разработчика
-
-### MCP архитектура: адаптивные графы выполнения
-
-```mermaid
-graph LR
-    Agent[LLM Agent] --> Decision[Runtime Decision]
-    Decision --> Selection[Tool Selection]
-    Selection --> Logic[Business Logic]
-    Logic --> Update[Context Update]
-    Update --> Agent
-```
-
-- **Динамический DAG**: граф строится в runtime на основе контекста
-- **Адаптивные пути**: LLM выбирает стратегию выполнения
-- **Неопределенность как норма**: система адаптируется к новым сценариям
-</div>
+- **Предопределенные пути**: последовательность вызовов известна при разработке
+- **Жесткая логика**: if/else ветвления в коде определяют поведение
+- **Ошибки = баги**: неожиданный путь выполнения — ошибка разработчика
 
 ---
 
-## Новая роль разработчика: от императивного к декларативному
+MCP архитектура: динамические графы выполнения
 
-<div style="font-size: 26px;">
 
-**Классический подход**: Разработчик программирует точный алгоритм
+
+![](attachments/dynamic_DAG.svg)
+
+- **Адаптивные пути**: LLM выбирает стратегию выполнения в runtime
+- **Контекстные решения**: выбор инструментов зависит от текущей ситуации
+- **Неопределенность как норма**: система должна адаптироваться к новым сценариям
+
+**Ключевой сдвиг**: От программирования алгоритмов к программированию возможностей
+
+---
+
+## Принцип 2: От императивного к декларативному
+Изменение роли разработчика
+
+
+
+**Было**: Разработчик программирует точный алгоритм
+
+<div style="font-size: 20px;">
+
 ```javascript
 if (user.role === 'admin') {
   result = await getAdminData();
@@ -579,7 +573,12 @@ if (user.role === 'admin') {
 }
 ```
 
-**MCP подход**: Разработчик определяет возможности и ограничения
+</div>
+
+**Стало**: Разработчик определяет возможности и ограничения
+
+<div style="font-size: 20px;">
+
 ```json
 {
   "tools": ["get_admin_data", "get_manager_data"],
@@ -590,212 +589,84 @@ if (user.role === 'admin') {
 }
 ```
 
-**Ключевое изменение**: От программирования поведения к программированию возможностей
 </div>
+
+**Философия**: Вместо "как делать" определяем "что можно делать"
 
 ---
 
-## От stateless к stateful
+## Принцип 3: От stateless к контекстным сессиям
 
-### Architectural Implications
+### Классический подход: каждый запрос независим
+- REST принцип: вся информация в запросе
+- Нет памяти о предыдущих взаимодействиях
+- Масштабируемость через stateless-ность
 
-<div style="font-size: 24px;">
+### MCP подход: контекстные диалоги
+- **Память сессии**: Host помнит историю взаимодействий
+- **Длительные операции**: поддержка прогресса и обратной связи
+- **Гибкое состояние**: от stateless инструментов до внешних хранилищ артефактов
 
-**REST/HTTP архитектура**: Каждый запрос независим
-- Простое горизонтальное масштабирование
-- Любой сервер может обработать любой запрос
-- Отказоустойчивость через stateless репликацию
-
-**MCP архитектура**: Долгоживущие сессии с контекстом
-- Необходимость Sticky Sessions или Shared State
-- Session Affinity в load balancer
-- Сложности при failover и rolling updates
-
-### Возврат к stateful-аспектам: когда это оправдано и какова цена
-
-MCP не «заставляет» делать систему stateful, но добавляет управляемое состояние там, где оно даёт ценность:
-- Разговорный контекст и история — у `Host`.
-- Инструментальные артефакты и прогресс — у сервера или во внешнем сторе при необходимости.
-- Транспортные аспекты (SSE/streaming) — требуют привязки соединений на время операции.
-
-**Где появляется цена:**
-- Управление длительными соединениями и session affinity.
-- Хранение артефактов между вызовами инструмента (не истории диалога).
-- Координация failover и rolling updates при наличии внешнего стора.
-
-```mermaid
-graph LR
-    Agent[LLM/Client] --> Host[MCP Host<br/>Conversation + Orchestration]
-    Host -->|HTTP/SSE| LB[Load Balancer]
-    LB --> SrvA[MCP Server A]
-    LB --> SrvB[MCP Server B]
-    SrvA --- Store[(Optional Artifact Store)]
-    SrvB --- Store
-```
-
-**Паттерны состояния:**
-1) Stateless инструменты — все параметры в каждом вызове; без shared store.  
-2) Эфемерное состояние на соединении — нужна stickiness на время операции/streaming.  
-3) Внешний Artifact Store — файлы, отчёты, промежуточные результаты; шарится между инстансами одного сервиса.
-
-</div>
+**Компромисс**: Производительность диалога vs сложность масштабирования
 
 ---
 
-## От однонаправленной к двунаправленной связи
+## Принцип 4: От однонаправленной к двунаправленной связи
 
-### Классические API: Request-Response модель
+### Классические API: только request-response (в рамках спецификации)
 
-<div style="font-size: 24px;">
-
-```mermaid
-sequenceDiagram
-    Client->>Server: request
-    Server->>Client: response
-```
-
-**Ограничения**:
-- Сервер не может инициировать взаимодействие
-- Для server-push нужны дополнительные механизмы (WebSockets, SSE)
-- Нет стандартизированного способа для обратной связи
-
-### MCP: Встроенная двунаправленность
-
-```mermaid
-sequenceDiagram
-    participant Client as MCP Client
-    participant Server as MCP Server
-    
-    Client->>Server: tools/call
-    Server->>Client: result
-    Server->>Client: progress/notify
-    Client->>Server: sampling/request
-    Server->>Client: elicitation/response
-```
-
-**Возможности**:
-- Server-initiated messages как часть протокола
-- Progress notifications в реальном времени  
-- Elicitation (запрос дополнительных данных от пользователя)
-- Standardized bidirectional communication
-</div>
+![width:400](attachments/request-responce.svg)
 
 ---
 
-## Изменение роли оркестратора
+### MCP: встроенная двунаправленность
 
-### Классическая оркестрация: Centralized Control
+![width:400](attachments/bidirectional.svg)
 
-<div style="font-size: 22px;">
 
-```mermaid
-graph TB
-    Orchestrator[Frontend/BFF<br/>Orchestrator]
-    Orchestrator --> ServiceA[Service A]
-    Orchestrator --> ServiceB[Service B]
-    Orchestrator --> ServiceC[Service C]
-    ServiceA --> Database[(Database)]
-    ServiceB --> Cache[(Cache)]
-    ServiceC --> Queue[(Queue)]
-```
-
-**Характеристики**:
-- Явное программирование последовательности вызовов
-- Централизованная логика принятия решений
-- Предсказуемые пути исполнения
-- Ошибки обрабатываются централизованно
-
-### MCP оркестрация: Distributed Intelligence  
-
-```mermaid
-graph TB
-    Agent[AI Agent<br/>Intelligent Orchestrator]
-    Agent --> MCP1[MCP Server 1<br/>Business Rules]
-    Agent --> MCP2[MCP Server 2<br/>Data Access]
-    Agent --> MCP3[MCP Server 3<br/>External APIs]
-    
-    MCP1 --> Context[Context Store<br/>Shared State]
-    MCP2 --> Context
-    MCP3 --> Context
-```
-
-**Характеристики**:
-- Динамическое планирование выполнения
-- Распределенное принятие решений  
-- Адаптивные пути исполнения
-- Контекстно-зависимая обработка ошибок
-</div>
+**Результат**: Более богатое взаимодействие, приближенное к человеческому диалогу
 
 ---
 
-## Распределение ответственности: новая парадигма
+## Принцип 5: Новая модель распределения ответственности
 
 <div style="font-size: 25px;">
 
-### Классическое распределение
-```mermaid
-pie title Распределение ответственности
-    "Developer Code" : 90
-    "API Contracts" : 10
-```
+| Было (классические API) | Стало (MCP) |
+|--------------------------|-------------|
+| **Детальный контроль**<br/>Разработчик программирует каждый шаг | **Определение политик**<br/>Разработчик задает правила игры |
+| **Статические контракты**<br/>Жесткие схемы API | **Динамические возможности**<br/>API описывает "что можно" и "когда можно" |
+| **Централизованная логика**<br/>Вся логика в одном месте | **Распределенный интеллект**<br/>Решения на разных уровнях системы |
+| **Предсказуемость**<br/>Все пути выполнения известны | **Адаптивность**<br/>Система справляется с новыми сценариями |
 
-### MCP распределение  
-```mermaid
-pie title Распределение ответственности
-    "Developer Code" : 40
-    "MCP Tools" : 30
-    "AI Agent" : 30
-```
-
-**Ключевые изменения в архитектурном мышлении**:
-- От детального контроля к определению политик
-- От статических контрактов к динамическим возможностям
-- От централизованной логики к распределенному интеллекту
-- От предсказуемости к адаптивности
 </div>
 
 ---
 
-## Классическая архитектура
+## Архитектурная метафора: от заводского конвейера к живому организму
 
-```mermaid
-graph TB
-    C1[Client] --> BFF[Backend for Frontend]
-    BFF --> S1[Service A]
-    BFF --> S2[Service B] 
-    BFF --> S3[Service C]
-    S1 --> DB1[(Database)]
-    S2 --> Cache[(Cache)]
-    S3 --> Queue[(Queue)]
-    
-    classDef classical fill:#e1f5fe
-    class C1,BFF,S1,S2,S3,DB1,Cache,Queue classical
-```
+### Классические системы = Заводской конвейер
+
+![width:1000](attachments/classical_workflow.svg)
+
+
+- Четкая последовательность операций
+- Каждый элемент выполняет строго определенную функцию
+- Отклонения = поломки
 
 ---
 
-## MCP архитектура
+### MCP системы = Живой организм  
 
-```mermaid
-graph TB
-    Agent[AI Agent<br/>Dynamic Orchestrator] --> MCP1[MCP Server 1<br/>Business Rules]
-    Agent --> MCP2[MCP Server 2<br/>Data Access]
-    Agent --> MCP3[MCP Server 3<br/>External APIs]
-    
-    MCP1 --> Context[(Context Store<br/>Shared State)]
-    MCP2 --> Context
-    MCP3 --> Context
-    
-    Agent -.->|"Progress notifications"| MCP1
-    Agent -.->|"Elicitation requests"| MCP2
-    Agent -.->|"Bidirectional"| MCP3
-    
-    classDef mcp fill:#f3e5f5
-    classDef agent fill:#fff3e0
-    
-    class MCP1,MCP2,MCP3,Context mcp
-    class Agent agent
-```
+
+![width:800](attachments/life_graph.svg)
+
+
+- Адаптация к изменяющимся условиям
+- Различные органы (MCP серверы) взаимодействуют через нервную систему (Host)
+- Способность к обучению и эволюции
+
+**Это требует нового мышления от архитекторов и разработчиков**
 
 ---
 
