@@ -542,7 +542,7 @@ Content-Type: application/json
 
 ---
 
-## От однонаправленной к двунаправленной связ
+## От однонаправленной к двунаправленной связи
   - Server-initiated messages как часть протокола
   - Progress notifications и elicitation
   - Сравнение с WebSockets vs встроенная возможность
